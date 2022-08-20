@@ -14,6 +14,7 @@ import txaio
 import copy
 import socket
 import multiprocessing
+import logging
 import time
 
 import signal
@@ -21,6 +22,7 @@ from urllib.parse import unquote
 
 from .rate_control import rate
 
+logger = logging.getLogger(__name__)
 makeDaemonic = (platform.system() == "Windows")
 
 # Redefine `Thread.run` to not show a traceback for Spyder when stopping
@@ -66,7 +68,7 @@ def find_free_port():
     return s.getsockname()[1]
 
 
-__HTTP_PORT = find_free_port()
+__HTTP_PORT = int(os.getenv("VPYTHON_PORT", find_free_port()))
 __SOCKET_PORT = find_free_port()
 
 try:
@@ -121,6 +123,7 @@ class serveHTTP(BaseHTTPRequestHandler):
              'ico': ['image/x-icon', serverdata]}
 
     def do_GET(self):
+        logger.debug("Doing get")
         global httpserving
         httpserving = True
         html = False
@@ -137,6 +140,7 @@ class serveHTTP(BaseHTTPRequestHandler):
             mime = self.mimes[fext]
             # For example, mime[0] is image/jpg,
             # mime[1] is C:\Users\Bruce\Anaconda3\lib\site-packages\vpython\vpython_data
+            logger.debug("Sending response")
             self.send_response(200)
             self.send_header('Content-type', mime[0])
             self.end_headers()
@@ -155,6 +159,7 @@ class serveHTTP(BaseHTTPRequestHandler):
                 self.wfile.write(glowcomm.encode('utf-8'))
 
     def log_message(self, format, *args):  # this overrides server stderr output
+        logger.debug(format, *args)
         return
 
 # Requests from client to websocket server can be the following:
@@ -257,25 +262,34 @@ class WSserver(WebSocketServerProtocol):
         else:
             os.kill(os.getpid(), signal.SIGINT)
 
+logger.info("Creating server")
 
 try:
     if platform.python_implementation() == 'PyPy':
-        server_address = ('', 0)      # let HTTPServer choose a free port
+        server_address = ('', int(os.getenv("VPYTHON_PORT", 0)))      # let HTTPServer choose a free port
         __server = HTTPServer(server_address, serveHTTP)
         port = __server.server_port   # get the chosen port
         # Change the global variable to store the actual port used
         __HTTP_PORT = port
-        _webbrowser.open('http://localhost:{}'.format(port)
-                         )  # or webbrowser.open_new_tab()
+        url = 'http://localhost:{}'.format(__HTTP_PORT)
+        if os.getenv("VPYTHON_NOBROWSER"):
+            print(url)
+        else:
+            _webbrowser.open(url)  # or webbrowser.open_new_tab()
     else:
         __server = HTTPServer(('', __HTTP_PORT), serveHTTP)
-        # or webbrowser.open_new_tab()
-        if _browsertype == 'default':  # uses default browser
-            _webbrowser.open('http://localhost:{}'.format(__HTTP_PORT))
+
+        url = 'http://localhost:{}'.format(__HTTP_PORT)
+        if os.getenv("VPYTHON_NOBROWSER"):
+            print(url)
+        else:
+            if _browsertype == 'default':  # uses default browser
+                _webbrowser.open(url)         # or webbrowser.open_new_tab()
 
 except:
     pass
 
+logger.info("Server created")
 
 if _browsertype == 'pyqt':
     if platform.python_implementation() == 'PyPy':
@@ -299,7 +313,7 @@ def start_Qapp(port):
     filename = filepath + '/qtbrowser.py'
     os.system('python ' + filename + ' http://localhost:{}'.format(port))
 
-
+logger.info("Starting serve forever loop")
 # create a browser in its own process
 if _browsertype == 'pyqt':
     __m = multiprocessing.Process(target=start_Qapp, args=(__HTTP_PORT,))
@@ -307,7 +321,7 @@ if _browsertype == 'pyqt':
 
 __w = threading.Thread(target=__server.serve_forever, daemon=makeDaemonic)
 __w.start()
-
+logger.info("Started")
 
 def start_websocket_server():
     """
@@ -334,13 +348,13 @@ def start_websocket_server():
     __interact_loop.run_until_complete(__coro)
     __interact_loop.run_forever()
 
-
+logger.debug("Starting WS server")
 # Put the websocket server in a separate thread running its own event loop.
 # That works even if some other program (e.g. spyder) already running an
 # async event loop.
 __t = threading.Thread(target=start_websocket_server, daemon=makeDaemonic)
 __t.start()
-
+logger.debug("WS Started")
 
 def stop_server():
     """Shuts down all threads and exits cleanly."""
