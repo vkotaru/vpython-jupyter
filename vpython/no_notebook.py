@@ -68,8 +68,8 @@ def find_free_port():
     return s.getsockname()[1]
 
 
-__HTTP_PORT = int(os.getenv("VPYTHON_PORT", find_free_port()))
-__SOCKET_PORT = find_free_port()
+__HTTP_PORT = int(os.getenv("VPYTHON_HTTP_PORT", find_free_port()))
+__SOCKET_PORT = int(os.getenv("VPYTHON_SOCKET_PORT", find_free_port()))
 
 try:
     if platform.python_implementation() == 'PyPy':
@@ -77,6 +77,9 @@ try:
         __SOCKET_PORT = 9000 + __SOCKET_PORT % 1000
 except:
     pass
+
+print("__HTTP_PORT ", __HTTP_PORT)
+print("__SOCKET_PORT ", __SOCKET_PORT)
 
 # try: # machinery for reusing ports
     # fd = open('free_ports')
